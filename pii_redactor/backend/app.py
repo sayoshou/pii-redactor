@@ -1,6 +1,9 @@
-curl -X POST http://127.0.0.1:5000/api/check -H "Content-Type: application/json" -d "{\"text\":\"連絡先: test@example.com, 電話: 03-1234-5678, 名前: 山田太郎\"}"import io
+import io
+import logging
 import os
 from flask import Flask, request, render_template, send_file, jsonify
+
+logging.basicConfig(level=logging.DEBUG, format="%(name)s %(levelname)s %(message)s")
 from config import PII_PLACEHOLDERS
 from llm_client import query_llm
 from processors.csv_processor import process_csv
@@ -8,7 +11,12 @@ from processors.excel_processor import process_excel
 from processors.email_processor import process_email
 from pii_detector import redact_pii
 
-app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), "..", "frontend"))
+app = Flask(
+    __name__,
+    template_folder=os.path.join(os.path.dirname(__file__), "..", "frontend"),
+    static_folder=os.path.join(os.path.dirname(__file__), "..", "frontend"),
+    static_url_path="",
+)
 
 
 @app.route("/")
