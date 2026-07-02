@@ -113,14 +113,41 @@ def _clean_llm_response(response: str) -> str:
     return response
 
 
+_MAX_CHUNK_CHARS = 1000
+
+
+def _split_into_chunks(text: str, max_chars: int = _MAX_CHUNK_CHARS) -> list:
+    """行単位でテキストをmax_chars以内のチャンクに分割する"""
+    lines = text.splitlines(keepends=True)
+    chunks = []
+    current = []
+    current_len = 0
+    for line in lines:
+        if current and current_len + len(line) > max_chars:
+            chunks.append("".join(current))
+            current = []
+            current_len = 0
+        current.append(line)
+        current_len += len(line)
+    if current:
+        chunks.append("".join(current))
+    return chunks or [text]
+
+
 def _redact_with_llm(text: str, sensitivity: float) -> str:
     _log(f"[LLM] 呼び出し開始 (テキスト長={len(text)}字)")
     try:
         prompt = _build_llm_prompt(text, sensitivity)
-        estimated_tokens = max(512, int(len(text) * 2))
+        estimated_tokens = max(1024, int(len(text) * 4))
         response = query_llm(prompt, max_tokens=estimated_tokens)
         if response:
             cleaned = _clean_llm_response(response)
+            if len(cleaned) < len(text) * 0.5:
+                _log(
+                    f"[LLM WARN] 出力が入力の50%未満 ({len(cleaned)}/{len(text)}字、"
+                    "途中で切れた可能性) → 正規表現結果にフォールバック"
+                )
+                return text
             _log(f"[LLM OK] レスポンス先頭200字: {cleaned[:200]}")
             return cleaned
         _log("[LLM] レスポンスが空でした → 正規表現結果を使用")
@@ -137,7 +164,9 @@ def redact_pii(text: str, sensitivity: float = 0.5) -> str:
     local = _replace_patterns(text)
     use_llm = len(text) >= 50 or sensitivity >= 0.3
     if use_llm:
-        llm_result = _redact_with_llm(local, sensitivity)
+        # 長文はチャンク分割してLLMを複数回呼び出す（一度に渡すとハング/途中切れの原因になる）
+        chunks = _split_into_chunks(local)
+        llm_result = "".join(_redact_with_llm(chunk, sensitivity) for chunk in chunks)
         if llm_result and llm_result != local:
             # LLMが見逃したPIIを全パターンの正規表現で後掛け補完する
             return _replace_patterns(llm_result)

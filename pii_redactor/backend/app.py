@@ -45,6 +45,14 @@ def api_redact():
         redacted = process_email(content, redact_pii)
         output_bytes = redacted.encode("utf-8")
         mimetype = "message/rfc822"
+    elif suffix in ["txt"]:
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            text = content.decode("cp932", errors="replace")
+        redacted = redact_pii(text)
+        output_bytes = redacted.encode("utf-8")
+        mimetype = "text/plain"
     else:
         return jsonify({"error": "unsupported file type"}), 400
 
